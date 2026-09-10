@@ -1,6 +1,8 @@
 const cors = require("cors");
 const dotenv = require("dotenv");
 const express = require("express");
+const connectDatabase = require("./config/db");
+const authRoutes = require("./routes/auth");
 
 dotenv.config();
 
@@ -17,12 +19,16 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+app.use("/api/auth", authRoutes);
+
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: "Route not found"
   });
 });
+
+connectDatabase();
 
 app.listen(port, () => {
   console.log(`MediCare Server running on port ${port}`);
