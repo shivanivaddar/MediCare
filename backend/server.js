@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const express = require("express");
 const connectDatabase = require("./config/db");
 const authRoutes = require("./routes/auth");
+const medicineRoutes = require("./routes/medicines");
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/medicines", medicineRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
