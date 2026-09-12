@@ -49,6 +49,8 @@ function App() {
   const [shop, setShop] = useState('')
   const [customerLocation, setCustomerLocation] = useState(null)
   const [locationMessage, setLocationMessage] = useState('')
+  const [nearbyShops, setNearbyShops] = useState([])
+  const [nearbyLoading, setNearbyLoading] = useState(false)
   const [authMode, setAuthMode] = useState('login')
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' })
   const [medicineForm, setMedicineForm] = useState({ name: '', category: '', price: '', stock: '' })
@@ -129,12 +131,37 @@ function App() {
     setLocationMessage('Finding your location...')
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setCustomerLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude })
-        setLocationMessage('Live location enabled. Distances are calculated from your position.')
+        const location = { latitude: position.coords.latitude, longitude: position.coords.longitude }
+        setCustomerLocation(location)
+        findNearbyShops(location)
       },
       () => setLocationMessage('Location permission was denied. You can still open each shop on the map.'),
       { enableHighAccuracy: true, timeout: 10000 }
     )
+  }
+
+  async function findNearbyShops(location) {
+    setNearbyLoading(true)
+    setLocationMessage('Finding medical shops near you...')
+    const query = `[out:json];node[amenity=pharmacy](around:10000,${location.latitude},${location.longitude});out;`
+    try {
+      const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`)
+      const data = await response.json()
+      const results = data.elements.map((item) => ({
+        id: item.id,
+        name: item.tags?.name || 'Local medical shop',
+        address: [item.tags?.['addr:street'], item.tags?.['addr:city']].filter(Boolean).join(', ') || 'Address unavailable',
+        latitude: item.lat,
+        longitude: item.lon,
+        distance: distanceInKm(location.latitude, location.longitude, item.lat, item.lon).toFixed(1),
+      })).sort((first, second) => Number(first.distance) - Number(second.distance)).slice(0, 12)
+      setNearbyShops(results)
+      setLocationMessage(results.length ? `${results.length} nearby medical shops found.` : 'No mapped medical shops found within 10 km.')
+    } catch {
+      setLocationMessage('Nearby shops could not be loaded. Try again with location enabled.')
+    } finally {
+      setNearbyLoading(false)
+    }
   }
 
     const nearbyShopsUrl = customerLocation
@@ -172,7 +199,7 @@ function App() {
       {message && <div className="notice" role="status">{message}</div>}
       <section className="catalog-section"><div className="section-heading"><div><p className="eyebrow">MediCare shops / catalogue</p><h2>Find your medicine</h2><p className="section-copy">Browse products by name, shop, category, and live quantity.</p></div><span className="result-count">{medicines.length} products available</span></div>
         <div className="location-toolbar"><div><p className="eyebrow">Shop tracking</p><strong>{locationMessage || 'See nearby shops and their current opening status.'}</strong></div><button className="primary-button" onClick={trackShopLocation}>Use my live location</button></div><div className="shop-strip"><button className={!shop ? 'shop-pill active' : 'shop-pill'} onClick={() => setShop('')}>All shops</button>{shops.map((item) => <button className={shop === item.name ? 'shop-pill active' : 'shop-pill'} key={item.name} onClick={() => setShop(item.name)}>{item.name}<small>{starterMedicines.filter((medicine) => medicine.shop === item.name).length} products</small></button>)}</div>
-          <div className="location-toolbar"><div><p className="eyebrow">Shop tracking</p><strong>{locationMessage || 'Find medical shops near your current location.'}</strong></div><div className="location-actions"><button className="primary-button" onClick={trackShopLocation}>Use my live location</button>{nearbyShopsUrl && <a className="map-button" href={nearbyShopsUrl} target="_blank" rel="noreferrer">Find nearby medical shops ↗</a>}</div></div><div className="shop-strip"><button className={!shop ? 'shop-pill active' : 'shop-pill'} onClick={() => setShop('')}>All shops</button>{shops.map((item) => <button className={shop === item.name ? 'shop-pill active' : 'shop-pill'} key={item.name} onClick={() => setShop(item.name)}>{item.name}<small>{starterMedicines.filter((medicine) => medicine.shop === item.name).length} products</small></button>)}</div>
+          <div className="location-toolbar"><div><p className="eyebrow">Shop tracking</p><strong>{locationMessage || 'Find medical shops near your current location.'}</strong></div><div className="location-actions"><button className="primary-button" onClick={trackShopLocation} disabled={nearbyLoading}>{nearbyLoading ? 'Searching...' : 'Use my live location'}</button>{nearbyShopsUrl && <a className="map-button" href={nearbyShopsUrl} target="_blank" rel="noreferrer">Open all in map ↗</a>}</div></div>{nearbyShops.length > 0 && <div className="nearby-results"><div className="section-heading"><div><p className="eyebrow">Near your location</p><h3>Nearby medical shops</h3></div><span className="result-count">Within 10 km</span></div><div className="nearby-grid">{nearbyShops.map((item) => <article className="nearby-card" key={item.id}><span className="nearby-dot" /><div><h3>{item.name}</h3><p>{item.address}</p><small>{item.distance} km away</small></div><a href={`https://www.openstreetmap.org/?mlat=${item.latitude}&mlon=${item.longitude}#map=18/${item.latitude}/${item.longitude}`} target="_blank" rel="noreferrer">View map ↗</a></article>)}</div></div>}<div className="shop-strip"><button className={!shop ? 'shop-pill active' : 'shop-pill'} onClick={() => setShop('')}>All shops</button>{shops.map((item) => <button className={shop === item.name ? 'shop-pill active' : 'shop-pill'} key={item.name} onClick={() => setShop(item.name)}>{item.name}<small>{starterMedicines.filter((medicine) => medicine.shop === item.name).length} products</small></button>)}</div>
         <div className="filters"><label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search medicines" /></label><select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="">All categories</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select><select value={shop} onChange={(event) => setShop(event.target.value)} aria-label="Filter by shop"><option value="">All shops</option>{shops.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select>{user && ['pharmacist', 'admin'].includes(user.role) && <button className="primary-button" onClick={() => setShowForm(!showForm)}>+ Add medicine</button>}</div>
         <div className="shop-location-grid">{shops.map((item) => { const distance = customerLocation ? distanceInKm(customerLocation.latitude, customerLocation.longitude, item.latitude, item.longitude).toFixed(1) : null; return <article className="shop-location-card" key={item.name}><div><span className="shop-live"><i />{item.open ? 'Open now' : 'Closed'}</span><h3>{item.name}</h3><p>{item.address}</p>{distance && <small>{distance} km from your location</small>}</div><a href={`https://www.google.com/maps/dir/?api=1&destination=${item.latitude},${item.longitude}`} target="_blank" rel="noreferrer">Open map ↗</a></article> })}</div>
         {showForm && <form className="medicine-form" onSubmit={handleAddMedicine}><input required placeholder="Medicine name" value={medicineForm.name} onChange={(event) => setMedicineForm({ ...medicineForm, name: event.target.value })} /><input required placeholder="Category" value={medicineForm.category} onChange={(event) => setMedicineForm({ ...medicineForm, category: event.target.value })} /><input required min="0" type="number" placeholder="Price" value={medicineForm.price} onChange={(event) => setMedicineForm({ ...medicineForm, price: event.target.value })} /><input required min="0" type="number" placeholder="Stock" value={medicineForm.stock} onChange={(event) => setMedicineForm({ ...medicineForm, stock: event.target.value })} /><button className="primary-button" disabled={loading}>{loading ? 'Saving...' : 'Save medicine'}</button></form>}
