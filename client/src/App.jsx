@@ -31,6 +31,7 @@ function App() {
   const [categories, setCategories] = useState([])
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
+  const [shop, setShop] = useState('')
   const [authMode, setAuthMode] = useState('login')
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' })
   const [medicineForm, setMedicineForm] = useState({ name: '', category: '', price: '', stock: '' })
@@ -46,22 +47,25 @@ function App() {
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (category) params.set('category', category)
+    if (shop) params.set('shop', shop)
     try {
       const data = await request(`/medicines?${params}`)
       const availableMedicines = data.medicines.length ? data.medicines : starterMedicines
-      setMedicines(availableMedicines)
+      const visibleMedicines = shop ? availableMedicines.filter((medicine) => medicine.shop === shop) : availableMedicines
+      setMedicines(visibleMedicines)
       setCategories([...new Set(availableMedicines.map((medicine) => medicine.category))])
     } catch {
       const filteredMedicines = starterMedicines.filter((medicine) => {
         const matchesSearch = !search || medicine.name.toLowerCase().includes(search.toLowerCase())
         const matchesCategory = !category || medicine.category === category
-        return matchesSearch && matchesCategory
+        const matchesShop = !shop || medicine.shop === shop
+        return matchesSearch && matchesCategory && matchesShop
       })
       setMedicines(filteredMedicines)
       setCategories([...new Set(starterMedicines.map((medicine) => medicine.category))])
       setMessage('Showing the MediCare catalogue')
     }
-  }, [search, category, setMessage])
+  }, [search, category, shop, setMessage])
 
   useEffect(() => {
     // The request synchronizes the catalogue with the backend.
@@ -130,7 +134,8 @@ function App() {
       <section className="intro"><div><p className="eyebrow">Trusted care, delivered clearly</p><h1>Your everyday pharmacy,<br /><em>made simpler.</em></h1><p className="intro-copy">Browse essential medicines, check availability, and keep your health routine moving.</p></div><div className="intro-note"><span>01</span><p>Verified medicines<br />from trusted partners</p></div></section>
       {message && <div className="notice" role="status">{message}</div>}
       <section className="catalog-section"><div className="section-heading"><div><p className="eyebrow">MediCare shops / catalogue</p><h2>Find your medicine</h2><p className="section-copy">Browse products by name, shop, category, and live quantity.</p></div><span className="result-count">{medicines.length} products available</span></div>
-        <div className="filters"><label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search medicines" /></label><select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="">All categories</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select>{user && ['pharmacist', 'admin'].includes(user.role) && <button className="primary-button" onClick={() => setShowForm(!showForm)}>+ Add medicine</button>}</div>
+        <div className="shop-strip"><button className={!shop ? 'shop-pill active' : 'shop-pill'} onClick={() => setShop('')}>All shops</button>{[...new Set(starterMedicines.map((medicine) => medicine.shop))].map((item) => <button className={shop === item ? 'shop-pill active' : 'shop-pill'} key={item} onClick={() => setShop(item)}>{item}<small>{starterMedicines.filter((medicine) => medicine.shop === item).length} products</small></button>)}</div>
+        <div className="filters"><label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search medicines" /></label><select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="">All categories</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select><select value={shop} onChange={(event) => setShop(event.target.value)} aria-label="Filter by shop"><option value="">All shops</option>{[...new Set(starterMedicines.map((medicine) => medicine.shop))].map((item) => <option key={item} value={item}>{item}</option>)}</select>{user && ['pharmacist', 'admin'].includes(user.role) && <button className="primary-button" onClick={() => setShowForm(!showForm)}>+ Add medicine</button>}</div>
         {showForm && <form className="medicine-form" onSubmit={handleAddMedicine}><input required placeholder="Medicine name" value={medicineForm.name} onChange={(event) => setMedicineForm({ ...medicineForm, name: event.target.value })} /><input required placeholder="Category" value={medicineForm.category} onChange={(event) => setMedicineForm({ ...medicineForm, category: event.target.value })} /><input required min="0" type="number" placeholder="Price" value={medicineForm.price} onChange={(event) => setMedicineForm({ ...medicineForm, price: event.target.value })} /><input required min="0" type="number" placeholder="Stock" value={medicineForm.stock} onChange={(event) => setMedicineForm({ ...medicineForm, stock: event.target.value })} /><button className="primary-button" disabled={loading}>{loading ? 'Saving...' : 'Save medicine'}</button></form>}
         <div className="medicine-grid">{medicines.map((medicine) => <article className="medicine-card" key={medicine._id}><img className="medicine-image" src={medicine.image || starterMedicines[0].image} alt={`${medicine.name} medicine`} /><p className="card-category">{medicine.category}</p><h3>{medicine.name}</h3><p className="medicine-shop">{medicine.shop || medicine.manufacturer || 'MediCare shop'}</p>{medicine.requiresPrescription && <span className="prescription-label">Prescription required</span>}<div className="card-footer"><span><b>{medicine.stock}</b> units available</span><strong>₹{medicine.price}</strong></div><button className="booking-button" onClick={() => addToBooking(medicine)}>Add to booking</button></article>)}{!medicines.length && <div className="empty-state"><span>✚</span><h3>No medicines found</h3><p>Try another name or choose a different category.</p></div>}</div>
       </section>
