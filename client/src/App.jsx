@@ -14,6 +14,21 @@ const starterMedicines = [
   { _id: 'starter-ors', name: 'ORS Hydration Salts', category: 'Wellness', price: 25, stock: 150, manufacturer: 'MediCare Labs', shop: 'MediCare South', image: 'https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?w=600&q=80' },
 ]
 
+const shops = [
+  { name: 'MediCare Central', address: 'MG Road, Bengaluru', latitude: 12.9716, longitude: 77.5946, open: true },
+  { name: 'MediCare North', address: 'Yeshwanthpur, Bengaluru', latitude: 13.0285, longitude: 77.5400, open: true },
+  { name: 'MediCare East', address: 'Whitefield, Bengaluru', latitude: 12.9698, longitude: 77.7499, open: true },
+  { name: 'MediCare South', address: 'Jayanagar, Bengaluru', latitude: 12.9250, longitude: 77.5938, open: true },
+]
+
+function distanceInKm(firstLatitude, firstLongitude, secondLatitude, secondLongitude) {
+  const earthRadius = 6371
+  const latitudeDifference = (secondLatitude - firstLatitude) * Math.PI / 180
+  const longitudeDifference = (secondLongitude - firstLongitude) * Math.PI / 180
+  const arc = Math.sin(latitudeDifference / 2) ** 2 + Math.cos(firstLatitude * Math.PI / 180) * Math.cos(secondLatitude * Math.PI / 180) * Math.sin(longitudeDifference / 2) ** 2
+  return earthRadius * 2 * Math.atan2(Math.sqrt(arc), Math.sqrt(1 - arc))
+}
+
 async function request(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
@@ -32,6 +47,8 @@ function App() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [shop, setShop] = useState('')
+  const [customerLocation, setCustomerLocation] = useState(null)
+  const [locationMessage, setLocationMessage] = useState('')
   const [authMode, setAuthMode] = useState('login')
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' })
   const [medicineForm, setMedicineForm] = useState({ name: '', category: '', price: '', stock: '' })
@@ -104,6 +121,22 @@ function App() {
 
   function logout() { localStorage.removeItem('medicare_token'); setToken(null); setUser(null); setMessage('You have been logged out') }
 
+  function trackShopLocation() {
+    if (!navigator.geolocation) {
+      setLocationMessage('Live location is not supported by this browser.')
+      return
+    }
+    setLocationMessage('Finding your location...')
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCustomerLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude })
+        setLocationMessage('Live location enabled. Distances are calculated from your position.')
+      },
+      () => setLocationMessage('Location permission was denied. You can still open each shop on the map.'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
   function addToBooking(medicine) {
     setBooking((current) => {
       const existing = current.find((item) => item._id === medicine._id)
@@ -134,8 +167,9 @@ function App() {
       <section className="intro"><div><p className="eyebrow">Trusted care, delivered clearly</p><h1>Your everyday pharmacy,<br /><em>made simpler.</em></h1><p className="intro-copy">Browse essential medicines, check availability, and keep your health routine moving.</p></div><div className="intro-note"><span>01</span><p>Verified medicines<br />from trusted partners</p></div></section>
       {message && <div className="notice" role="status">{message}</div>}
       <section className="catalog-section"><div className="section-heading"><div><p className="eyebrow">MediCare shops / catalogue</p><h2>Find your medicine</h2><p className="section-copy">Browse products by name, shop, category, and live quantity.</p></div><span className="result-count">{medicines.length} products available</span></div>
-        <div className="shop-strip"><button className={!shop ? 'shop-pill active' : 'shop-pill'} onClick={() => setShop('')}>All shops</button>{[...new Set(starterMedicines.map((medicine) => medicine.shop))].map((item) => <button className={shop === item ? 'shop-pill active' : 'shop-pill'} key={item} onClick={() => setShop(item)}>{item}<small>{starterMedicines.filter((medicine) => medicine.shop === item).length} products</small></button>)}</div>
-        <div className="filters"><label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search medicines" /></label><select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="">All categories</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select><select value={shop} onChange={(event) => setShop(event.target.value)} aria-label="Filter by shop"><option value="">All shops</option>{[...new Set(starterMedicines.map((medicine) => medicine.shop))].map((item) => <option key={item} value={item}>{item}</option>)}</select>{user && ['pharmacist', 'admin'].includes(user.role) && <button className="primary-button" onClick={() => setShowForm(!showForm)}>+ Add medicine</button>}</div>
+        <div className="location-toolbar"><div><p className="eyebrow">Shop tracking</p><strong>{locationMessage || 'See nearby shops and their current opening status.'}</strong></div><button className="primary-button" onClick={trackShopLocation}>Use my live location</button></div><div className="shop-strip"><button className={!shop ? 'shop-pill active' : 'shop-pill'} onClick={() => setShop('')}>All shops</button>{shops.map((item) => <button className={shop === item.name ? 'shop-pill active' : 'shop-pill'} key={item.name} onClick={() => setShop(item.name)}>{item.name}<small>{starterMedicines.filter((medicine) => medicine.shop === item.name).length} products</small></button>)}</div>
+        <div className="filters"><label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search medicines" /></label><select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="">All categories</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select><select value={shop} onChange={(event) => setShop(event.target.value)} aria-label="Filter by shop"><option value="">All shops</option>{shops.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select>{user && ['pharmacist', 'admin'].includes(user.role) && <button className="primary-button" onClick={() => setShowForm(!showForm)}>+ Add medicine</button>}</div>
+        <div className="shop-location-grid">{shops.map((item) => { const distance = customerLocation ? distanceInKm(customerLocation.latitude, customerLocation.longitude, item.latitude, item.longitude).toFixed(1) : null; return <article className="shop-location-card" key={item.name}><div><span className="shop-live"><i />{item.open ? 'Open now' : 'Closed'}</span><h3>{item.name}</h3><p>{item.address}</p>{distance && <small>{distance} km from your location</small>}</div><a href={`https://www.google.com/maps/dir/?api=1&destination=${item.latitude},${item.longitude}`} target="_blank" rel="noreferrer">Open map ↗</a></article> })}</div>
         {showForm && <form className="medicine-form" onSubmit={handleAddMedicine}><input required placeholder="Medicine name" value={medicineForm.name} onChange={(event) => setMedicineForm({ ...medicineForm, name: event.target.value })} /><input required placeholder="Category" value={medicineForm.category} onChange={(event) => setMedicineForm({ ...medicineForm, category: event.target.value })} /><input required min="0" type="number" placeholder="Price" value={medicineForm.price} onChange={(event) => setMedicineForm({ ...medicineForm, price: event.target.value })} /><input required min="0" type="number" placeholder="Stock" value={medicineForm.stock} onChange={(event) => setMedicineForm({ ...medicineForm, stock: event.target.value })} /><button className="primary-button" disabled={loading}>{loading ? 'Saving...' : 'Save medicine'}</button></form>}
         <div className="medicine-grid">{medicines.map((medicine) => <article className="medicine-card" key={medicine._id}><img className="medicine-image" src={medicine.image || starterMedicines[0].image} alt={`${medicine.name} medicine`} /><p className="card-category">{medicine.category}</p><h3>{medicine.name}</h3><p className="medicine-shop">{medicine.shop || medicine.manufacturer || 'MediCare shop'}</p>{medicine.requiresPrescription && <span className="prescription-label">Prescription required</span>}<div className="card-footer"><span><b>{medicine.stock}</b> units available</span><strong>₹{medicine.price}</strong></div><button className="booking-button" onClick={() => addToBooking(medicine)}>Add to booking</button></article>)}{!medicines.length && <div className="empty-state"><span>✚</span><h3>No medicines found</h3><p>Try another name or choose a different category.</p></div>}</div>
       </section>
