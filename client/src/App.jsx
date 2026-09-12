@@ -1,121 +1,91 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 
+const API_URL = 'http://localhost:5000/api'
+
+async function request(path, options = {}) {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data.message || 'Something went wrong')
+  return data
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [user, setUser] = useState(null)
+  const [token, setToken] = useState(localStorage.getItem('medicare_token'))
+  const [medicines, setMedicines] = useState([])
+  const [categories, setCategories] = useState([])
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('')
+  const [authMode, setAuthMode] = useState('login')
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' })
+  const [medicineForm, setMedicineForm] = useState({ name: '', category: '', price: '', stock: '' })
+  const [showForm, setShowForm] = useState(false)
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const loadMedicines = useCallback(async () => {
+    const params = new URLSearchParams()
+    if (search) params.set('search', search)
+    if (category) params.set('category', category)
+    const data = await request(`/medicines?${params}`)
+    setMedicines(data.medicines)
+    setCategories((current) => [...new Set([...current, ...data.medicines.map((medicine) => medicine.category)])])
+  }, [search, category])
+
+  useEffect(() => {
+    // The request synchronizes the catalogue with the backend.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadMedicines().catch((error) => setMessage(error.message))
+  }, [loadMedicines])
+
+  useEffect(() => {
+    if (!token) return
+    request('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then((data) => setUser(data.user))
+      .catch(() => { localStorage.removeItem('medicare_token'); setToken(null) })
+  }, [token])
+
+  async function handleAuth(event) {
+    event.preventDefault(); setLoading(true); setMessage('')
+    try {
+      const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register'
+      const data = await request(endpoint, { method: 'POST', body: JSON.stringify(authForm) })
+      localStorage.setItem('medicare_token', data.token); setToken(data.token); setUser(data.user)
+      setMessage(`Welcome, ${data.user.name}`)
+    } catch (error) { setMessage(error.message) } finally { setLoading(false) }
+  }
+
+  async function handleAddMedicine(event) {
+    event.preventDefault(); setLoading(true)
+    try {
+      await request('/medicines', {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...medicineForm, price: Number(medicineForm.price), stock: Number(medicineForm.stock) }),
+      })
+      setMedicineForm({ name: '', category: '', price: '', stock: '' }); setShowForm(false)
+      setMessage('Medicine added successfully'); await loadMedicines()
+    } catch (error) { setMessage(error.message) } finally { setLoading(false) }
+  }
+
+  function logout() { localStorage.removeItem('medicare_token'); setToken(null); setUser(null); setMessage('You have been logged out') }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+    <main className="app-shell">
+      <nav className="topbar"><a className="brand" href="/"><span className="brand-mark">+</span><span>MediCare</span></a><div className="nav-actions">{user ? <span className="user-chip">{user.name} · {user.role}</span> : <span className="status-dot">Open pharmacy</span>}{user && <button className="text-button" onClick={logout}>Log out</button>}</div></nav>
+      <section className="intro"><div><p className="eyebrow">Trusted care, delivered clearly</p><h1>Your everyday pharmacy,<br /><em>made simpler.</em></h1><p className="intro-copy">Browse essential medicines, check availability, and keep your health routine moving.</p></div><div className="intro-note"><span>01</span><p>Verified medicines<br />from trusted partners</p></div></section>
+      {message && <div className="notice" role="status">{message}</div>}
+      <section className="catalog-section"><div className="section-heading"><div><p className="eyebrow">The collection</p><h2>Find your medicine</h2></div><span className="result-count">{medicines.length} available</span></div>
+        <div className="filters"><label className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search medicines" /></label><select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="">All categories</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select>{user && ['pharmacist', 'admin'].includes(user.role) && <button className="primary-button" onClick={() => setShowForm(!showForm)}>+ Add medicine</button>}</div>
+        {showForm && <form className="medicine-form" onSubmit={handleAddMedicine}><input required placeholder="Medicine name" value={medicineForm.name} onChange={(event) => setMedicineForm({ ...medicineForm, name: event.target.value })} /><input required placeholder="Category" value={medicineForm.category} onChange={(event) => setMedicineForm({ ...medicineForm, category: event.target.value })} /><input required min="0" type="number" placeholder="Price" value={medicineForm.price} onChange={(event) => setMedicineForm({ ...medicineForm, price: event.target.value })} /><input required min="0" type="number" placeholder="Stock" value={medicineForm.stock} onChange={(event) => setMedicineForm({ ...medicineForm, stock: event.target.value })} /><button className="primary-button" disabled={loading}>{loading ? 'Saving...' : 'Save medicine'}</button></form>}
+        <div className="medicine-grid">{medicines.map((medicine) => <article className="medicine-card" key={medicine._id}><div className="medicine-icon">✚</div><p className="card-category">{medicine.category}</p><h3>{medicine.name}</h3><div className="card-footer"><span>In stock · {medicine.stock}</span><strong>₹{medicine.price}</strong></div></article>)}{!medicines.length && <div className="empty-state"><span>✚</span><h3>No medicines yet</h3><p>Connect your catalogue by adding the first medicine.</p></div>}</div>
       </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      {!user && <section className="auth-panel"><div><p className="eyebrow">Your account</p><h2>{authMode === 'login' ? 'Welcome back.' : 'Join MediCare.'}</h2><p>Sign in to manage orders and your personal pharmacy experience.</p></div><form onSubmit={handleAuth}>{authMode === 'register' && <input required placeholder="Full name" value={authForm.name} onChange={(event) => setAuthForm({ ...authForm, name: event.target.value })} />}<input required type="email" placeholder="Email address" value={authForm.email} onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })} /><input required minLength="6" type="password" placeholder="Password" value={authForm.password} onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })} /><button className="primary-button" disabled={loading}>{loading ? 'Please wait...' : authMode === 'login' ? 'Sign in' : 'Create account'}</button><button type="button" className="switch-button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>{authMode === 'login' ? 'New to MediCare? Create an account' : 'Already registered? Sign in'}</button></form></section>}
+      <footer><span>MEDICARE / 2026</span><span>Care that keeps up with you.</span></footer>
+    </main>
   )
 }
 
