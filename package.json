@@ -1,0 +1,13 @@
+{
+  "name": "medicare",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix client run dev\"",
+    "backend": "npm --prefix backend run dev",
+    "frontend": "npm --prefix client run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
